@@ -1,0 +1,7 @@
+select table_name || '.' || column_name || '=' || data_type
+from information_schema.columns
+where table_schema = 'ideo';
+
+
+mysqldump --xml --default-character-set=latin1 --no-data -u root ideo -r dumpMySqlStruct.xml
+mysqldump --xml --default-character-set=latin1 --no-create-info -u root ideo -r dumpMySqlData.xml
