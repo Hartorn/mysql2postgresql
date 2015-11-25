@@ -1,7 +1,7 @@
 /**
  *
  */
-package com.lejeu.ideo.util.sql;
+package com.github.hartorn.mysql2pgsql;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
