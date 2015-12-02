@@ -56,33 +56,37 @@ public class XmlToSql {
 	 * @param args
 	 */
 	public static void main(final String[] args) {
-		String filename = null;
+		String filenameStruct = null;
+		String filenameData = null;
 
-		for (int i = 0; i < args.length; i++) {
-			filename = args[i];
-			if (i != (args.length - 1)) {
-				XmlToSql.usage();
-			}
-		}
-
-		if (filename == null) {
+		if (args.length != 2) {
 			XmlToSql.usage();
+		} else {
+			filenameStruct = args[0];
+			filenameData = args[1];
 		}
+		final File sqlFileStruct = new File(filenameStruct + "Struct.sql");
+		final File sqlFileData = new File(filenameData + "Data.sql");
 
-		final File sqlFile = new File(filename + ".sql");
+		File xmlFileStructCorrected = null;
+		File xmlFileDataCorrected = null;
 
-		File xmlFileCorrected = null;
 		try {
-			xmlFileCorrected = XmlToSql.copyToCorrectedFile(filename);
+			xmlFileStructCorrected = XmlToSql.copyToCorrectedFile(filenameStruct);
+			xmlFileDataCorrected = XmlToSql.copyToCorrectedFile(filenameData);
+
 		} catch (final IOException e) {
 			e.printStackTrace();
 			System.exit(1);
 		}
 
-		try (final InputStream xmlStream = new BufferedInputStream(new FileInputStream(xmlFileCorrected),
+		final Xml2SqlStructEventHandler xml2sqlStruct = new Xml2SqlStructEventHandler();
+
+		// Parse and construct the db structure, and write the sql file
+		try (final InputStream xmlStream = new BufferedInputStream(new FileInputStream(xmlFileStructCorrected),
 				XmlToSql.BUFFER_SIZE);
 				final Reader xmlReader = new InputStreamReader(xmlStream, XmlToSql.CHARSET);
-				final OutputStream outputStream = new FileOutputStream(sqlFile);
+				final OutputStream outputStream = new FileOutputStream(sqlFileStruct);
 				final Writer writer = new OutputStreamWriter(outputStream, XmlToSql.CHARSET);) {
 
 			final InputSource is = new InputSource(xmlReader);
@@ -90,12 +94,30 @@ public class XmlToSql {
 			final SAXParserFactory spf = SAXParserFactory.newInstance();
 			spf.setNamespaceAware(true);
 			final SAXParser saxParser = spf.newSAXParser();
-			saxParser.parse(is, new Xml2SqlEventHandler(writer));
-
+			saxParser.parse(is, xml2sqlStruct);
+			xml2sqlStruct.writeSql(writer);
 		} catch (final IOException | SAXException | ParserConfigurationException e) {
 			e.printStackTrace();
 			System.exit(1);
 		}
+		// Write the sql file from the XML data dump
+		try (final InputStream xmlStream = new BufferedInputStream(new FileInputStream(xmlFileDataCorrected),
+				XmlToSql.BUFFER_SIZE);
+				final Reader xmlReader = new InputStreamReader(xmlStream, XmlToSql.CHARSET);
+				final OutputStream outputStream = new FileOutputStream(sqlFileData);
+				final Writer writer = new OutputStreamWriter(outputStream, XmlToSql.CHARSET);) {
+
+			final InputSource is = new InputSource(xmlReader);
+			is.setEncoding(XmlToSql.CHARSET);
+			final SAXParserFactory spf = SAXParserFactory.newInstance();
+			spf.setNamespaceAware(true);
+			final SAXParser saxParser = spf.newSAXParser();
+			saxParser.parse(is, new Xml2SqlDataEventHandler(writer, xml2sqlStruct.getTableMap()));
+		} catch (final IOException | SAXException | ParserConfigurationException e) {
+			e.printStackTrace();
+			System.exit(1);
+		}
+
 	}
 
 	/**

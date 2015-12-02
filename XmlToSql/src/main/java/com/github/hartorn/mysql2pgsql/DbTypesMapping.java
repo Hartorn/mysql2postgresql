@@ -3,6 +3,10 @@
  */
 package com.github.hartorn.mysql2pgsql;
 
+import java.text.MessageFormat;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import org.xml.sax.SAXException;
 
 /**
@@ -10,7 +14,7 @@ import org.xml.sax.SAXException;
  *
  */
 public enum DbTypesMapping {
-	BIT("BIT", "BIT", false, true),
+	BIT("BIT", "BIT({0})", false, true),
 
 	TINYINT("TINYINT", "SMALLINT", true, true),
 
@@ -28,11 +32,11 @@ public enum DbTypesMapping {
 
 	BIGINT("BIGINT", "BIGINT", true, true, false, "NUMERIC(20,0)"),
 
-	DECIMAL("DECIMAL", "NUMERIC", true, true, true, null),
+	DECIMAL("DECIMAL", "NUMERIC({0},{1})", true, true, true, null),
 
-	DEC("DEC", "NUMERIC", true, true, true, null),
+	DEC("DEC", "NUMERIC({0},{1})", true, true, true, null),
 
-	FIXED("FIXED", "NUMERIC", true, true, true, null),
+	FIXED("FIXED", "NUMERIC({0},{1})", true, true, true, null),
 
 	FLOAT("FLOAT", "REAL", true, true, true, null),
 
@@ -48,9 +52,9 @@ public enum DbTypesMapping {
 
 	TIMESTAMP("TIMESTAMP", "TIMESTAMP"),
 
-	CHAR("CHAR", "CHARACTER", false, true),
+	CHAR("CHAR", "CHARACTER($1)", false, true),
 
-	VARCHAR("VARCHAR", "CHARACTER VARYING", false, true),
+	VARCHAR("VARCHAR", "CHARACTER VARYING({0})", false, true),
 
 	TEXT("TEXT", "TEXT"),
 
@@ -59,6 +63,23 @@ public enum DbTypesMapping {
 	VARBINARY("VARBINARY", "BYTEA", false, true)
 
 	;
+
+	/**
+	 * Pattern to match UNSIGNED (avec ou sans espace, sans casse).
+	 */
+	private static final Pattern UNSIGNED_REGEX = Pattern.compile("\\s*UNSIGNED\\s*", Pattern.CASE_INSENSITIVE);
+	/**
+	 * Pattern to match (length).
+	 */
+	private static final Pattern LENGTH_REGEX = Pattern.compile("\\s*\\((\\s*\\d+\\s*)\\)\\s*",
+			Pattern.CASE_INSENSITIVE);
+	/**
+	 * Pattern to match (length, precision).
+	 */
+	private static final Pattern PRECISION_REGEX = Pattern.compile("\\s*\\((\\s*\\d+\\s*),(\\s*\\d+\\s*)\\)\\s*",
+			Pattern.CASE_INSENSITIVE);
+
+	private static final String QUOTE = "'";
 
 	public static DbTypesMapping getMappingFromMySqlType(final String mySqlType) throws SAXException {
 		for (final DbTypesMapping dbType : DbTypesMapping.values()) {
@@ -70,12 +91,14 @@ public enum DbTypesMapping {
 	}
 
 	private final String mySqlType;
-	private final String pgType;
 
-	private final String pgTypeUnsigneg;
+	private final String pgType;
+	private final String pgTypeUnsigned;
+
+	private final StringBuilder forConcat = new StringBuilder();
+
 	private final boolean canBeUnsigned;
 	private final boolean canHaveLength;
-
 	private final boolean canHavePrecision;
 
 	private DbTypesMapping(final String mySqlType, final String pgType) {
@@ -91,10 +114,60 @@ public enum DbTypesMapping {
 			final boolean canHaveLength, final boolean canHavePrecision, final String pgTypeUnsigned) {
 		this.mySqlType = mySqlType;
 		this.pgType = pgType;
-		this.pgTypeUnsigneg = pgTypeUnsigned;
+		this.pgTypeUnsigned = pgTypeUnsigned;
 		this.canBeUnsigned = canBeUnsigned;
 		this.canHaveLength = canHaveLength;
 		this.canHavePrecision = canHavePrecision;
+	}
+
+	private String applyAndTrim(final String value, final Pattern regex) {
+		return regex.matcher(value).replaceAll("").trim();
+	}
+
+	private final String concat(final String... toConcat) {
+		this.forConcat.setLength(0);
+		if ((toConcat != null) && (toConcat.length > 0)) {
+			for (final String toAdd : toConcat) {
+				this.forConcat.append(toAdd);
+			}
+		}
+		return this.forConcat.toString();
+	}
+
+	private String emptyIfNull(final String value) {
+		return value != null ? value : "";
+	}
+
+	public String formatForSql(final String value) throws SAXException {
+		String formattedValue;
+		switch (this) {
+		case BIT:
+			formattedValue = concat("B", DbTypesMapping.QUOTE, value, DbTypesMapping.QUOTE);
+			break;
+		case CHAR:
+		case VARCHAR:
+		case TEXT:
+
+		case DATE:
+		case TIME:
+		case DATETIME:
+		case TIMESTAMP:
+
+			formattedValue = concat(DbTypesMapping.QUOTE, value, DbTypesMapping.QUOTE);
+			break;
+		case TINYINT:
+		case SMALLINT:
+		case MEDIUMINT:
+		case INT:
+		case INTEGER:
+		case BIGINT:
+			// case REAL:
+			formattedValue = value;
+			break;
+		default:
+			throw new SAXException("Missing enum type:" + name());
+		}
+		return formattedValue;
 	}
 
 	/**
@@ -105,13 +178,50 @@ public enum DbTypesMapping {
 	 * @return the pg Type
 	 */
 	public String getPostgreSqlType(final String mySqlType) {
-		// TODO add code
+		final String baseFormat;
+		// Choose the base pg type to use
+		if (this.canBeUnsigned && DbTypesMapping.UNSIGNED_REGEX.matcher(mySqlType).find()) {
+			baseFormat = this.pgTypeUnsigned != null ? this.pgTypeUnsigned : this.pgType;
+		} else {
+			baseFormat = this.pgType;
+		}
 
-		return null;
+		String result = baseFormat;
+
+		// Apply length and precision if needed
+		if (this.canHaveLength && this.canHavePrecision) {
+			final Matcher matcher = DbTypesMapping.PRECISION_REGEX.matcher(mySqlType);
+			String length = "";
+			String precision = "";
+			if (matcher.find()) {
+				length = matcher.group(1).trim();
+				precision = matcher.group(2).trim();
+			}
+			result = MessageFormat.format(baseFormat, length, precision);
+		} else if (this.canHaveLength) {
+			final Matcher matcher = DbTypesMapping.LENGTH_REGEX.matcher(mySqlType);
+			String length = "";
+			if (matcher.find()) {
+				length = matcher.group(1).trim();
+			}
+			result = MessageFormat.format(baseFormat, length);
+		}
+		return result;
 	}
 
 	private boolean isMatching(final String mySqlType) {
-		// TODO add code
-		return false;
+		String value = emptyIfNull(mySqlType);
+		// Removing unsigned part
+		if (this.canBeUnsigned) {
+			value = applyAndTrim(value, DbTypesMapping.UNSIGNED_REGEX);
+		}
+		// Removing length or precision part
+		if (this.canHaveLength && this.canHavePrecision) {
+			value = applyAndTrim(value, DbTypesMapping.PRECISION_REGEX);
+		} else if (this.canHaveLength) {
+			value = applyAndTrim(value, DbTypesMapping.LENGTH_REGEX);
+		}
+
+		return Pattern.compile(this.mySqlType, Pattern.CASE_INSENSITIVE).matcher(value).matches();
 	}
 }
