@@ -20,6 +20,8 @@ import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
@@ -29,6 +31,7 @@ import org.xml.sax.SAXException;
  */
 public class XmlToSql {
 	private static final int BUFFER_SIZE = 1024 * 8;
+	private static final Logger LOG = LogManager.getLogger(XmlToSql.class);
 	public static final String CHARSET = "ISO-8859-1";
 
 	private static File copyToCorrectedFile(final String filename) throws IOException {
@@ -71,6 +74,7 @@ public class XmlToSql {
 		File xmlFileStructCorrected = null;
 		File xmlFileDataCorrected = null;
 
+		XmlToSql.LOG.info("Starting the copy of corrected file (deleting non-valid XML characters");
 		try {
 			xmlFileStructCorrected = XmlToSql.copyToCorrectedFile(filenameStruct);
 			xmlFileDataCorrected = XmlToSql.copyToCorrectedFile(filenameData);
@@ -79,10 +83,12 @@ public class XmlToSql {
 			e.printStackTrace();
 			System.exit(1);
 		}
+		XmlToSql.LOG.info("End of the copy of corrected file");
 
 		final Xml2SqlStructEventHandler xml2sqlStruct = new Xml2SqlStructEventHandler();
 
 		// Parse and construct the db structure, and write the sql file
+		XmlToSql.LOG.info("Starting the parse of the XML dump (structure)");
 		try (final InputStream xmlStream = new BufferedInputStream(new FileInputStream(xmlFileStructCorrected),
 				XmlToSql.BUFFER_SIZE);
 				final Reader xmlReader = new InputStreamReader(xmlStream, XmlToSql.CHARSET);
@@ -100,7 +106,10 @@ public class XmlToSql {
 			e.printStackTrace();
 			System.exit(1);
 		}
-		// Write the sql file from the XML data dump
+		XmlToSql.LOG.info("End of the parsing of the XML dump (structure)");
+		XmlToSql.LOG.info("Starting the parse of the XML dump (data)");
+
+		// // Write the sql file from the XML data dump
 		try (final InputStream xmlStream = new BufferedInputStream(new FileInputStream(xmlFileDataCorrected),
 				XmlToSql.BUFFER_SIZE);
 				final Reader xmlReader = new InputStreamReader(xmlStream, XmlToSql.CHARSET);
@@ -117,7 +126,7 @@ public class XmlToSql {
 			e.printStackTrace();
 			System.exit(1);
 		}
-
+		XmlToSql.LOG.info("End of the parse of the XML dump (data)");
 	}
 
 	/**

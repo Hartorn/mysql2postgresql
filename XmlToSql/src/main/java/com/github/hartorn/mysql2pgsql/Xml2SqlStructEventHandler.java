@@ -58,6 +58,10 @@ public class Xml2SqlStructEventHandler extends DefaultHandler {
 		case "field":
 			this.currentTable.addColumn(new ColumnStruct(attributes));
 			break;
+		case "key":
+			this.currentTable.addKey(attributes);
+			// <key Table="actions" Non_unique="0" Key_name="PRIMARY"
+			break;
 		default:
 			break;
 		}

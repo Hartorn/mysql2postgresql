@@ -52,11 +52,17 @@ public enum DbTypesMapping {
 
 	TIMESTAMP("TIMESTAMP", "TIMESTAMP"),
 
-	CHAR("CHAR", "CHARACTER($1)", false, true),
+	CHAR("CHAR", "CHARACTER({0})", false, true),
 
 	VARCHAR("VARCHAR", "CHARACTER VARYING({0})", false, true),
 
+	TINYTEXT("TINYTEXT", "CHARACTER VARYING(255)"),
+
+	MEDIUMTEXT("MEDIUMTEXT", "TEXT"),
+
 	TEXT("TEXT", "TEXT"),
+
+	LONGTEXT("LONGTEXT", "TEXT"),
 
 	BINARY("BINARY", "BYTEA", false, true),
 
@@ -91,14 +97,14 @@ public enum DbTypesMapping {
 	}
 
 	private final String mySqlType;
-
 	private final String pgType;
+
 	private final String pgTypeUnsigned;
 
 	private final StringBuilder forConcat = new StringBuilder();
-
 	private final boolean canBeUnsigned;
 	private final boolean canHaveLength;
+
 	private final boolean canHavePrecision;
 
 	private DbTypesMapping(final String mySqlType, final String pgType) {
@@ -146,24 +152,47 @@ public enum DbTypesMapping {
 			break;
 		case CHAR:
 		case VARCHAR:
+		case TINYTEXT:
+		case MEDIUMTEXT:
 		case TEXT:
+		case LONGTEXT:
 
 		case DATE:
 		case TIME:
 		case DATETIME:
 		case TIMESTAMP:
 
-			formattedValue = concat(DbTypesMapping.QUOTE, value, DbTypesMapping.QUOTE);
+			formattedValue = concat(DbTypesMapping.QUOTE, emptyIfNull(value).replaceAll("'", "''"),
+					DbTypesMapping.QUOTE);
 			break;
+
 		case TINYINT:
 		case SMALLINT:
 		case MEDIUMINT:
 		case INT:
 		case INTEGER:
 		case BIGINT:
+		case FLOAT:
+		case DECIMAL:
+		case DEC:
+		case FIXED:
+		case DOUBLE:
+		case DOUBLE_PRECISION:
+
 			// case REAL:
 			formattedValue = value;
 			break;
+
+		case BINARY:
+		case VARBINARY:
+			formattedValue = concat("E", DbTypesMapping.QUOTE, value, DbTypesMapping.QUOTE, "::bytea");
+			break;
+
+		case BOOL:
+		case BOOLEAN:
+			formattedValue = value;
+			break;
+
 		default:
 			throw new SAXException("Missing enum type:" + name());
 		}
