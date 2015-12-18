@@ -79,6 +79,8 @@ public class Xml2SqlDataEventHandler extends DefaultHandler {
 	private String prepareStringValueForSql(final String attrName, final String value) throws SAXException {
 		final DbTypesMapping dbType = this.currentTable.getDbType(attrName.toLowerCase().trim());
 		return dbType.formatForSql(value);
+		// Converters<T,U> MySQL Type-> Pg Type ? TODO
+
 	}
 
 	@Override
