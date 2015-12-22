@@ -10,6 +10,10 @@
 			additivity="false">
 			<AppenderRef ref="Console" />
 		</Logger>
+		<Logger name="com.github.hartorn.mysql2pgsql.Xml2SqlDataEventHandler"
+			level="info" additivity="false">
+			<AppenderRef ref="Console" />
+		</Logger>
 		<Root level="error">
 			<AppenderRef ref="Console" />
 		</Root>

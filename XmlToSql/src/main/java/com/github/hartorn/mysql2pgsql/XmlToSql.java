@@ -1,12 +1,6 @@
-/**
- *
- */
 package com.github.hartorn.mysql2pgsql;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,6 +9,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
+import java.util.Map;
 
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
@@ -24,144 +19,107 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
 
 /**
+ * Main class to handle the main method : copying, parsing the XML and writing SQL files.
+ *
  * @author Bazire
  *
  */
 public class XmlToSql {
-	private static final int BUFFER_SIZE = 1024 * 8;
-	private static final Logger LOG = LogManager.getLogger(XmlToSql.class);
-	public static final String CHARSET = "ISO-8859-1";
+    private static final Logger LOG = LogManager.getLogger(XmlToSql.class);
+    public static final String CHARSET = "ISO-8859-1";
 
-	private static File copyToCorrectedFile(final String filename) throws IOException {
-		final File xmlFile = new File(filename);
-		final File xmlFileCorrected = new File(filename + ".corrected");
-		if (xmlFileCorrected.exists()) {
-			xmlFileCorrected.createNewFile();
-		}
-		final char[] buffer = new char[XmlToSql.BUFFER_SIZE];
-		int nbChars;
+    /**
+     * Main method.
+     *
+     * @param args
+     *            arguments
+     */
+    public static void main(final String[] args) {
+        String filenameStruct = null;
+        String filenameData = null;
 
-		try (final OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(xmlFileCorrected));
-				final InputStream inputStream = new BufferedInputStream(new FileInputStream(xmlFile),
-						XmlToSql.BUFFER_SIZE);
-				final Reader reader = new InputStreamReader(inputStream, XmlToSql.CHARSET);
-				final Writer writer = new OutputStreamWriter(outputStream, XmlToSql.CHARSET);) {
-			while ((nbChars = reader.read(buffer)) != -1) {
-				writer.write(XmlToSql.stripNonValidXMLCharacters(String.copyValueOf(buffer, 0, nbChars)));
-			}
-		}
-		return xmlFileCorrected;
-	}
+        if (args.length != 2) {
+            XmlToSql.usage();
+        } else {
+            filenameStruct = args[0];
+            filenameData = args[1];
+        }
+        final File sqlFileStruct = new File(filenameStruct + "Struct.sql");
+        final File sqlFileData = new File(filenameData + "Data.sql");
 
-	/**
-	 * @param args
-	 */
-	public static void main(final String[] args) {
-		String filenameStruct = null;
-		String filenameData = null;
+        File xmlFileStructCorrected = null;
+        File xmlFileDataCorrected = null;
 
-		if (args.length != 2) {
-			XmlToSql.usage();
-		} else {
-			filenameStruct = args[0];
-			filenameData = args[1];
-		}
-		final File sqlFileStruct = new File(filenameStruct + "Struct.sql");
-		final File sqlFileData = new File(filenameData + "Data.sql");
+        XmlToSql.LOG.info("Starting the copy of corrected files (deleting non-valid XML characters)");
+        try {
+            xmlFileStructCorrected = FileUtils.copyToCorrectedFile(filenameStruct);
+            xmlFileDataCorrected = FileUtils.copyToCorrectedFile(filenameData);
 
-		File xmlFileStructCorrected = null;
-		File xmlFileDataCorrected = null;
+        } catch (final IOException e) {
+            e.printStackTrace();
+            System.exit(1);
+        }
+        XmlToSql.LOG.info("End of the copy of corrected files");
 
-		XmlToSql.LOG.info("Starting the copy of corrected file (deleting non-valid XML characters");
-		try {
-			xmlFileStructCorrected = XmlToSql.copyToCorrectedFile(filenameStruct);
-			xmlFileDataCorrected = XmlToSql.copyToCorrectedFile(filenameData);
+        Xml2SqlStructEventHandler xml2sqlStruct = new Xml2SqlStructEventHandler();
 
-		} catch (final IOException e) {
-			e.printStackTrace();
-			System.exit(1);
-		}
-		XmlToSql.LOG.info("End of the copy of corrected file");
+        // Parse and construct the db structure, and write the sql file
+        XmlToSql.LOG.info("Starting the parse of the XML dump (structure)");
 
-		final Xml2SqlStructEventHandler xml2sqlStruct = new Xml2SqlStructEventHandler();
+        try {
+            xml2sqlStruct = XmlToSql.<Xml2SqlStructEventHandler> parseAndWriteToOutput(xmlFileStructCorrected, sqlFileStruct, XmlToSql.CHARSET, true,
+                    null);
+        } catch (IOException | SAXException | ParserConfigurationException e) {
+            XmlToSql.LOG.info("Failure of the parsing of the XML dump (structure)");
+            e.printStackTrace();
+            System.exit(1);
+        }
+        XmlToSql.LOG.info("End of the parsing of the XML dump (structure)");
 
-		// Parse and construct the db structure, and write the sql file
-		XmlToSql.LOG.info("Starting the parse of the XML dump (structure)");
-		try (final InputStream xmlStream = new BufferedInputStream(new FileInputStream(xmlFileStructCorrected),
-				XmlToSql.BUFFER_SIZE);
-				final Reader xmlReader = new InputStreamReader(xmlStream, XmlToSql.CHARSET);
-				final OutputStream outputStream = new FileOutputStream(sqlFileStruct);
-				final Writer writer = new OutputStreamWriter(outputStream, XmlToSql.CHARSET);) {
+        XmlToSql.LOG.info("Starting the parse of the XML dump (data)");
+        // Write the sql file from the XML data dump
+        try {
+            XmlToSql.parseAndWriteToOutput(xmlFileDataCorrected, sqlFileData, XmlToSql.CHARSET, false, xml2sqlStruct.getTableMap());
+        } catch (IOException | SAXException | ParserConfigurationException e) {
+            XmlToSql.LOG.info("Failure of the parsing of the XML dump (data)");
+            e.printStackTrace();
+            System.exit(1);
+        }
+        XmlToSql.LOG.info("End of the parse of the XML dump (data)");
+    }
 
-			final InputSource is = new InputSource(xmlReader);
-			is.setEncoding(XmlToSql.CHARSET);
-			final SAXParserFactory spf = SAXParserFactory.newInstance();
-			spf.setNamespaceAware(true);
-			final SAXParser saxParser = spf.newSAXParser();
-			saxParser.parse(is, xml2sqlStruct);
-			xml2sqlStruct.writeSql(writer);
-		} catch (final IOException | SAXException | ParserConfigurationException e) {
-			e.printStackTrace();
-			System.exit(1);
-		}
-		XmlToSql.LOG.info("End of the parsing of the XML dump (structure)");
-		XmlToSql.LOG.info("Starting the parse of the XML dump (data)");
+    private static DefaultHandler buildHandler(final boolean forStruct, final Writer writer, final Map<String, TableStruct> tableMap) {
+        if (forStruct) {
+            return new Xml2SqlStructEventHandler();
+        }
+        return new Xml2SqlDataEventHandler(writer, tableMap);
+    }
 
-		// // Write the sql file from the XML data dump
-		try (final InputStream xmlStream = new BufferedInputStream(new FileInputStream(xmlFileDataCorrected),
-				XmlToSql.BUFFER_SIZE);
-				final Reader xmlReader = new InputStreamReader(xmlStream, XmlToSql.CHARSET);
-				final OutputStream outputStream = new FileOutputStream(sqlFileData);
-				final Writer writer = new OutputStreamWriter(outputStream, XmlToSql.CHARSET);) {
+    @SuppressWarnings("unchecked")
+    private static <D extends DefaultHandler> D parseAndWriteToOutput(final File inputFile, final File outputFile, final String charset,
+            final boolean forStruct, final Map<String, TableStruct> dbMapping) throws IOException, SAXException, ParserConfigurationException {
+        try (final InputStream xmlStream = FileUtils.buildBufferedInputStream(inputFile);
+                final Reader xmlReader = new InputStreamReader(xmlStream, charset);
+                final OutputStream outputStream = new FileOutputStream(outputFile);
+                final Writer writer = new OutputStreamWriter(outputStream, charset);) {
 
-			final InputSource is = new InputSource(xmlReader);
-			is.setEncoding(XmlToSql.CHARSET);
-			final SAXParserFactory spf = SAXParserFactory.newInstance();
-			spf.setNamespaceAware(true);
-			final SAXParser saxParser = spf.newSAXParser();
-			saxParser.parse(is, new Xml2SqlDataEventHandler(writer, xml2sqlStruct.getTableMap()));
-		} catch (final IOException | SAXException | ParserConfigurationException e) {
-			e.printStackTrace();
-			System.exit(1);
-		}
-		XmlToSql.LOG.info("End of the parse of the XML dump (data)");
-	}
+            final InputSource is = new InputSource(xmlReader);
+            is.setEncoding(charset);
+            final SAXParserFactory spf = SAXParserFactory.newInstance();
+            spf.setNamespaceAware(true);
+            final SAXParser saxParser = spf.newSAXParser();
+            final DefaultHandler handler = XmlToSql.buildHandler(forStruct, writer, dbMapping);
+            saxParser.parse(is, handler);
+            return (D) handler;
+        }
+    }
 
-	/**
-	 * This method ensures that the output String has only
-	 * valid XML unicode characters as specified by the
-	 * XML 1.0 standard. For reference, please see
-	 * <a href="http://www.w3.org/TR/2000/REC-xml-20001006#NT-Char">the
-	 * standard</a>. This method will return an empty
-	 * String if the input is null or empty.
-	 *
-	 * @param in
-	 *            The String whose non-valid characters we want to remove.
-	 * @return The in String, stripped of non-valid characters.
-	 */
-	private static String stripNonValidXMLCharacters(final String in) {
-		final StringBuffer out = new StringBuffer(); // Used to hold the output.
-		char current; // Used to reference the current character.
-
-		if ((in == null) || ("".equals(in))) {
-			return ""; // vacancy test.
-		}
-		for (int i = 0; i < in.length(); i++) {
-			current = in.charAt(i); // NOTE: No IndexOutOfBoundsException caught here; it should not happen.
-			if ((current == 0x9) || (current == 0xA) || (current == 0xD) || ((current >= 0x20) && (current <= 0xD7FF))
-					|| ((current >= 0xE000) && (current <= 0xFFFD))
-					|| ((current >= 0x10000) && (current <= 0x10FFFF))) {
-				out.append(current);
-			}
-		}
-		return out.toString();
-	}
-
-	private static void usage() {
-		System.err.println("Usage: XmlToSql <file.xml>");
-		System.err.println("       -usage or -help = this message");
-		System.exit(1);
-	}
+    private static void usage() {
+        System.err.println("Usage: XmlToSql <file.xml>");
+        System.err.println("       -usage or -help = this message");
+        System.exit(1);
+    }
 }

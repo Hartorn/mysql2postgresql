@@ -3,5 +3,13 @@ from information_schema.columns
 where table_schema = 'ideo';
 
 
+alter table cartes
+	CHANGE xmin x_min INT,
+   	CHANGE xmax x_max INT,
+	CHANGE ymin y_min INT,
+	CHANGE ymax y_max INT;
+
+SET PGCLIENTENCODING=ISO-8859-1 
+
 mysqldump --xml --default-character-set=latin1 --no-data -u root ideo -r dumpMySqlStruct.xml
 mysqldump --xml --default-character-set=latin1 --no-create-info -u root ideo -r dumpMySqlData.xml
